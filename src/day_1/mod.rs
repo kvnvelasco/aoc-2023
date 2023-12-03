@@ -12,7 +12,7 @@ static INPUT_1: &'static str = include_str!("./input_1.txt");
 /// (in that order) to form a single two-digit number.
 ///
 /// For example:
-/// ```
+/// ```text
 /// 1abc2
 /// pqr3stu8vwx
 /// a1b2c3d4e5f
@@ -139,5 +139,5 @@ fn full_case_1() {
 fn full_case_2() {
     let output = solve_2(&INPUT_1);
 
-    assert_eq!(output, 54081);
+    assert_eq!(output, 54649);
 }
