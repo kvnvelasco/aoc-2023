@@ -1,116 +1,11 @@
-use eyre::{Error};
-use std::collections::{HashSet};
-use std::fmt::{Debug, Display, Formatter, Write};
-use std::ops::{Add};
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Write};
+use std::ops::Add;
 use std::str::FromStr;
 
-#[derive(Copy, Clone)]
-struct Vector(isize, isize);
+use model::*;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-struct Coordinate(usize, usize);
-
-impl Add<Vector> for Coordinate {
-    type Output = Option<Coordinate>;
-
-    fn add(self, rhs: Vector) -> Self::Output {
-        Some(Self(
-            self.0.checked_add_signed(rhs.0)?,
-            self.1.checked_add_signed(rhs.1)?,
-        ))
-    }
-}
-
-impl Coordinate {
-    fn get_neighbors(self) -> [Option<Self>; 8] {
-        [
-            self + Vector(-1, -1),
-            self + Vector(0, -1),
-            self + Vector(1, -1),
-            self + Vector(-1, 0),
-            self + Vector(1, 0),
-            self + Vector(-1, 1),
-            self + Vector(0, 1),
-            self + Vector(1, 1),
-        ]
-    }
-
-    fn distance(&self, _rhs: &Self) -> f64 {
-        todo!()
-    }
-}
-
-struct Grid {
-    width: usize,
-    height: usize,
-    model: Vec<Cell>,
-}
-
-impl Grid {
-    fn get(&self, index: Coordinate) -> Option<Cell> {
-        self.model.get(index.0 + (self.width * index.1)).copied()
-    }
-}
-
-impl FromStr for Grid {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lines = s.trim().lines();
-
-        let model: Vec<Cell> = lines
-            .flat_map(|line| line.trim().chars())
-            .map(|char| match char {
-                '0'..='9' => Cell::Digit(char.to_digit(10).unwrap() as usize),
-                '.' => Cell::Empty,
-                '*' => Cell::Gear,
-                char => Cell::Symbol(char),
-            })
-            .collect();
-
-        let width = s.trim().lines().next().unwrap().len();
-        let height = model.chunks(width).count();
-        return Ok(Self {
-            width,
-            model,
-            height,
-        });
-    }
-}
-
-impl Display for Grid {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for (idx, line) in self.model.chunks(self.width).enumerate() {
-            for cell in line {
-                Display::fmt(cell, f)?;
-            }
-
-            if idx < self.height - 1 {
-                f.write_char('\n')?;
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-enum Cell {
-    Empty,
-    Gear,
-    Digit(usize),
-    Symbol(char),
-}
-
-impl Display for Cell {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Cell::Gear => f.write_char('*'),
-            Cell::Empty => f.write_char('.'),
-            Cell::Digit(d) => Display::fmt(d, f),
-            Cell::Symbol(x) => Display::fmt(x, f),
-        }
-    }
-}
+mod model;
 
 #[test]
 fn grid_parsing() {
@@ -201,113 +96,108 @@ fn get_gears(grid: Grid) -> eyre::Result<Vec<usize>> {
         .into_iter()
         .flat_map(move |y| ((0..grid.width).into_iter().map(move |x| Coordinate(x, y))));
     let mut output = vec![];
-    {
-        let _gears = HashSet::<Coordinate>::new();
-        for coordinate in iterator.clone() {
-            if !matches!(grid.get(coordinate), Some(Cell::Gear)) {
-                continue;
-            }
+    let mut unique_y_coordinates: HashSet<isize> = Default::default();
+    for coordinate in iterator.clone() {
+        if !matches!(grid.get(coordinate), Some(Cell::Gear)) {
+            continue;
+        }
 
-            let neighbors = coordinate.get_neighbors().into_iter().filter_map(|c| c);
+        let bitfield = grid.create_bitfield_around(coordinate);
+        // there are a computable number of valid states for the bitfield
+        // Of 256 possible states, 80 are valid where only two numbers
+        // surround a gear. We can construct these valid states using
+        // a recursive macro
+        macro_rules! bit {
+            ($t:literal, $m:literal, $b:literal) => {
+                &[$t, $m, $b]
+            };
+        }
 
-            // if there are any other symbols around us, we are not a gear.
-            if neighbors
-                .clone()
-                .any(|c| matches!(grid.get(c), Some(Cell::Symbol(_))))
-            {
-                continue;
-            }
-
-            // find all of the neighboring digits
-            let neighbor_number_cells = neighbors
-                .clone()
-                .filter(|c| matches!(grid.get(*c), Some(Cell::Digit(_))))
-                .collect::<Vec<_>>();
-
-            // if there is only 1 digit, this is not a gear.
-            if neighbor_number_cells.len() < 2 {
-                continue;
-            }
-
-            let bitfield = {
-                let upper_left_coordinate =
-                    (coordinate + Vector(-1, -1)).unwrap_or(Coordinate(0, 0));
-                let coordinates = neighbor_number_cells
-                    .iter()
-                    .map(|c| {
-                        Coordinate(c.0 - upper_left_coordinate.0, c.1 - upper_left_coordinate.1)
-                    })
-                    .collect::<Vec<_>>();
-
-                let mut bitfield = [0b000, 0b000, 0b000];
-                for coordinate in coordinates {
-                    bitfield[coordinate.1] |= 1 << (2 - coordinate.0)
-                }
-
-                bitfield
+        macro_rules! splat {
+            (b|$v:literal) => {
+                bit!(7, 0, $v)
+                    | bit!(6, 0, $v)
+                    | bit!(4, 0, $v)
+                    | bit!(3, 0, $v)
+                    | bit!(2, 0, $v)
+                    | bit!(1, 0, $v)
+                    | bit!(0, 4, $v)
+                    | bit!(0, 1, $v)
+            };
+            (t|$v:literal) => {
+                bit!($v, 0, 7)
+                    | bit!($v, 0, 6)
+                    | bit!($v, 0, 4)
+                    | bit!($v, 0, 3)
+                    | bit!($v, 0, 2)
+                    | bit!($v, 0, 1)
+                    | bit!($v, 4, 0)
+                    | bit!($v, 1, 0)
             };
 
-            macro_rules! bit {
-                ($t:literal, $m:literal, $b:literal) => {
-                    &[$t, $m, $b]
-                };
-            }
+            ($mode:tt) => {
+                splat!($mode | 7)
+                    | splat!($mode | 6)
+                    | splat!($mode | 4)
+                    | splat!($mode | 3)
+                    | splat!($mode | 1)
+            };
+            () => {
+                splat!(t) | splat!(b)
+            };
+        }
 
-            macro_rules! splat {
-                (b|$v:literal) => {
-                    bit!(7, 0, $v)
-                        | bit!(6, 0, $v)
-                        | bit!(4, 0, $v)
-                        | bit!(3, 0, $v)
-                        | bit!(2, 0, $v)
-                        | bit!(1, 0, $v)
-                        | bit!(0, 4, $v)
-                        | bit!(0, 1, $v)
-                };
-                (t|$v:literal) => {
-                    bit!($v, 0, 7)
-                        | bit!($v, 0, 6)
-                        | bit!($v, 0, 4)
-                        | bit!($v, 0, 3)
-                        | bit!($v, 0, 2)
-                        | bit!($v, 0, 1)
-                        | bit!($v, 4, 0)
-                        | bit!($v, 1, 0)
-                };
+        // there are a limited number of valid configurations
+        match &bitfield {
+            splat!() | bit!(0, 5, 0) | bit!(5, 0, 0) | bit!(0, 0, 5) => {
+                let vectors = bitfield_to_vectorfield(bitfield);
+                unique_y_coordinates.clear();
+                unique_y_coordinates.extend(vectors.iter().map(|v| v.1));
 
-                ($mode:tt) => {
-                    splat!($mode | 7)
-                        | splat!($mode | 6)
-                        | splat!($mode | 4)
-                        | splat!($mode | 3)
-                        | splat!($mode | 1)
-                };
-                () => {
-                    splat!(t) | splat!(b)
-                };
-            }
+                if unique_y_coordinates.len() == 1 {
+                    output.push(
+                        vectors
+                            .into_iter()
+                            .filter_map(|v| coordinate + v)
+                            .map(|c| find_number_in_grid_from(&grid, c))
+                            .product(),
+                    );
+                } else {
+                    assert_eq!(unique_y_coordinates.len(), 2);
+                    let mut iterator = unique_y_coordinates.iter();
+                    let (y1, y2) = (*iterator.next().unwrap(), *iterator.next().unwrap());
+                    let first = vectors.iter().find(|v| v.1 == y1).unwrap();
 
-            // there are a limited number of valid configurations
-            match &bitfield {
-                splat!() | bit!(0, 5, 0) | bit!(5, 0, 0) | bit!(0, 0, 5) => {
-                    let numbers = neighbor_number_cells
-                        .iter()
-                        .map(|x| find_number_in_grid_from(&grid, *x))
-                        .collect::<HashSet<_>>();
-                    dbg!(coordinate, &numbers);
-                    if numbers.len() == 1 {
-                        output.push(numbers.iter().next().unwrap().pow(2));
-                    } else {
-                        assert_eq!(numbers.len(), 2);
-                        output.push(numbers.iter().product())
-                    }
+                    let second = vectors.iter().find(|v| v.1 == y2).unwrap();
+
+                    output.push(
+                        find_number_in_grid_from(&grid, (coordinate + *first).unwrap())
+                            * find_number_in_grid_from(&grid, (coordinate + *second).unwrap()),
+                    );
                 }
-                _ => {}
             }
+            _ => {}
         }
     }
 
     Ok(output)
+}
+
+// We can convert the bitfield into a set of relative vectors around
+// its center detecting where the 1s are om the number and converting it into
+// a vector
+fn bitfield_to_vectorfield(bitfield: [u32; 3]) -> Vec<Vector> {
+    let mut output = vec![];
+    for y in -1isize..2 {
+        let y_value = bitfield[(y + 1) as usize];
+        for x in -1..2 {
+            let x_value = (y_value >> 1 - x) & 0b001;
+            if x_value == 1 {
+                output.push(Vector(x, y))
+            }
+        }
+    }
+    output
 }
 
 fn find_number_in_grid_from(grid: &Grid, pos: Coordinate) -> usize {
