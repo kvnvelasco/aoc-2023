@@ -67,7 +67,7 @@ fn solve_2(input: &str) -> usize {
                 DIGIT_SPELLINGS
                     .iter()
                     .enumerate()
-                    .find(|(idx, d)| str.contains(*d))
+                    .find(|(_idx, d)| str.contains(*d))
                     .map(|(idx, _)| idx)
             })
     }

@@ -49,7 +49,7 @@ fn do_outrageous_things(cards: &[Card]) -> usize {
         index += 1;
     }
 
-    local_copy.iter().fold(0, |acc, (v, copies)| acc + copies)
+    local_copy.iter().fold(0, |acc, (_v, copies)| acc + copies)
 }
 
 #[test]

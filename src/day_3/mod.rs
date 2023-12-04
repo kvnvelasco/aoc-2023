@@ -1,7 +1,7 @@
-use eyre::{Context, Error};
-use std::collections::{BTreeSet, HashSet};
+use eyre::{Error};
+use std::collections::{HashSet};
 use std::fmt::{Debug, Display, Formatter, Write};
-use std::ops::{Add, Index};
+use std::ops::{Add};
 use std::str::FromStr;
 
 #[derive(Copy, Clone)]
@@ -35,7 +35,7 @@ impl Coordinate {
         ]
     }
 
-    fn distance(&self, rhs: &Self) -> f64 {
+    fn distance(&self, _rhs: &Self) -> f64 {
         todo!()
     }
 }
@@ -202,7 +202,7 @@ fn get_gears(grid: Grid) -> eyre::Result<Vec<usize>> {
         .flat_map(move |y| ((0..grid.width).into_iter().map(move |x| Coordinate(x, y))));
     let mut output = vec![];
     {
-        let mut gears = HashSet::<Coordinate>::new();
+        let _gears = HashSet::<Coordinate>::new();
         for coordinate in iterator.clone() {
             if !matches!(grid.get(coordinate), Some(Cell::Gear)) {
                 continue;
@@ -295,7 +295,7 @@ fn get_gears(grid: Grid) -> eyre::Result<Vec<usize>> {
                         .map(|x| find_number_in_grid_from(&grid, *x))
                         .collect::<HashSet<_>>();
                     dbg!(coordinate, &numbers);
-                    if (numbers.len() == 1) {
+                    if numbers.len() == 1 {
                         output.push(numbers.iter().next().unwrap().pow(2));
                     } else {
                         assert_eq!(numbers.len(), 2);

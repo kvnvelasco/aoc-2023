@@ -1,6 +1,6 @@
 use eyre::{bail, eyre, Context};
 use std::collections::HashMap;
-use std::convert::Infallible;
+
 use std::str::FromStr;
 
 /// You're launched high into the atmosphere! The apex of your trajectory just
